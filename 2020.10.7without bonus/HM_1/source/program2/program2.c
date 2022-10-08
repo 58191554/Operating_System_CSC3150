@@ -12,6 +12,27 @@
 
 MODULE_LICENSE("GPL");
 
+
+// copy from <waitstatus.h> 
+/* If WIFEXITED(STATUS), the low-order 8 bits of the status.  */
+#define	__WEXITSTATUS(status)	(((status) & 0xff00) >> 8)
+
+/* If WIFSIGNALED(STATUS), the terminating signal.  */
+#define	__WTERMSIG(status)	((status) & 0x7f)
+
+/* If WIFSTOPPED(STATUS), the signal that stopped the child.  */
+#define	__WSTOPSIG(status)	__WEXITSTATUS(status)
+
+/* Nonzero if STATUS indicates normal termination.  */
+#define	__WIFEXITED(status)	(__WTERMSIG(status) == 0)
+
+/* Nonzero if STATUS indicates termination by a signal.  */
+#define __WIFSIGNALED(status) \
+  (((signed char) (((status) & 0x7f) + 1) >> 1) > 0)
+
+/* Nonzero if STATUS indicates the child is stopped.  */
+#define	__WIFSTOPPED(status)	(((status) & 0xff) == 0x7f)
+
 struct wait_opts {
 	enum pid_type wo_type;
 	int	wo_flags;
@@ -25,9 +46,21 @@ struct wait_opts {
 	int notask_error;
 };
 
+const char * sigprompt[]={"INVALID","hung up","interupted","quitted","stopped by ill-formed instruction",
+    "trapped","aborted","exited by bus error","exited by computation error","killed",
+    "exited by user defined signal","exited by segmentation fault","exited by user defined signal",
+    "trying to access a broken pipe","exited by an alarm","terminated","exited as coprocessor experiences a stack fault",
+    "receiving a SIGCHLD signal","receiving a coninue signal"};
+
+const char * const signame[]={"INVALID", "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL",
+	"SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGKILL", "SIGUSR1", "SIGSEGV",
+	"SIGUSR2", "SIGPIPE", "SIGALRM", "SIGTERM", "SIGSTKFLT", "SIGCHLD", "SIGCONT",
+	"SIGSTOP", "SIGTSTP", "SIGTTIN", "SIGTTOU", "SIGURG", "SIGXCPU", "SIGXFSZ",
+	"SIGVTALRM", "SIGPROF", "SIGWINCH", "SIGPOLL", "SIGPWR", "SIGSYS", NULL};
 
 static struct task_struct *task;
 int status;
+int sig;
 
 // extern essential linux kernel stuff
 extern pid_t kernel_clone(struct kernel_clone_args *args);
@@ -37,86 +70,37 @@ extern int do_execve(struct filename *filename,
 extern struct filename *getname_kernel(const char * filename);
 extern long do_wait(struct wait_opts *wo);
 
-void output_info(int exit){
-    switch (exit) {
-        case 1:
-            printk("[program2] : get SIGHUP signal\n");
-            printk("[program2] : child process is hung up\n");
-            printk("[program2] : The return signal is 1\n");
-            break;
-        case 2:
-            printk("[program2] : get SIGINT signal\n");
-            printk("[program2] : terminal interrupt\n");
-            printk("[program2] : The return signal is 2\n");
-            break;
-        case 131:
-            printk("[program2] : get SIGQUIT signal\n");
-            printk("[program2] : terminal quit\n");
-            printk("[program2] : The return signal is 3\n");
-            break;
-        case 132:
-            printk("[program2] : get SIGILL signal\n");
-            printk("[program2] : child process has illegal instruction error\n");
-            printk("[program2] : The return signal is 4\n");
-            break;
-        case 133:
-            printk("[program2] : get SIGTRAP signal\n");
-            printk("[program2] : child process has trap error\n");
-            printk("[program2] : The return signal is 5\n");
-            break;
-        case 134:
-            printk("[program2] : get SIGABRT signal\n");
-            printk("[program2] : child process has abort error\n");
-            printk("[program2] : The return signal is 6\n");
-            break;
-        case 135:
-            printk("[program2] : get SIGBUS signal\n");
-            printk("[program2] : child process has bus error\n");
-            printk("[program2] : The return signal is 7\n");
-            break;
-        case 136:
-            printk("[program2] : get SIGFPE signal\n");
-            printk("[program2] : child process has float error\n");
-            printk("[program2] : The return signal is 8\n");
-            break;
-        case 9:
-            printk("[program2] : get SIGKILL signal\n");
-            printk("[program2] : child process killed\n");
-            printk("[program2] : The return signal is 9\n");
-            break;
-        case 139:
-            printk("[program2] : get SIGSEGV signal\n");
-            printk("[program2] : child process has segmentation fault error\n");
-            printk("[program2] : The return signal is 11\n");
-            break;
-        case 13:
-            printk("[program2] : get SIGPIPE signal\n");
-            printk("[program2] : child process has pipe error\n");
-            printk("[program2] : The return signal is 13\n");
-            break;
-        case 14:
-            printk("[program2] : get SIGALARM signal\n");
-            printk("[program2] : child process has alarm error\n");
-            printk("[program2] : The return signal is 14\n");
-            break;
-        case 15:
-            printk("[program2] : get SIGTERM signal\n");
-            printk("[program2] : child process terminated\n");
-            printk("[program2] : The return signal is 15\n");
-            break;
-        case 0:
-            printk("[program2] : child process exit normally\n");
-            printk("[program2] : The return signal is 0\n");
-            break;
-    }
-    return;
+
+// print out the signal in the kernel log
+void output_info(int status){
+
+	if(__WIFSIGNALED(status)) {
+		sig = __WTERMSIG(status);
+		printk("[program2] : get %s signal\n",signame[sig]);
+		if(sig<=18) printk("[program2] : child process is %s.\n",sigprompt[sig]);
+		else printk("[program2] : the return signal is %d\n",sig);
+		printk("[program2] : the return signal is %d\n",sig);
+	}
+
+    if(__WIFSTOPPED(status)) {
+		sig = __WSTOPSIG(status);
+		printk("[program2] : child process get %s signal\n",signame[sig]);
+		if(sig<=18) printk("[program2] : child process is %s.\n",sigprompt[sig]);
+		else printk("[program2] : the return signal is %d\n",sig);
+	}
+
+    if(__WIFEXITED(status)) {
+		printk("[program2] : Normal termination with EXIT STATUS = %d\n",__WEXITSTATUS(status));
+	}
 }
+
 
 // implement execute function
 int my_exec(void *argc){
 	int result;
-	const char path[] = "/tmp/test";
-	// const char path[] = "/home/vagrant/CSC3150/HM_1/source/program2/test";
+	// const char path[] = "/tmp/test";
+	const char path[] = "/home/vagrant/CSC3150/HM_1/source/program2/test";
+    // const char *path = "/home/vagrant/CSC3150/HM_1/source/program1/abort";
 	// struct filename *path_file;
 	// const char __user *const __user argv = *NULL;
 	// const char __user *const __user envp = *NULL;
@@ -126,8 +110,8 @@ int my_exec(void *argc){
 }
 
 // implement my_wait function
-void my_wait(struct task_struct *task){
-	pid_t pid = task->pid;
+void my_wait(struct task_struct *pid){
+
 	struct wait_opts wo;
 	struct pid *wo_pid = NULL;
 	enum pid_type type;
@@ -143,15 +127,17 @@ void my_wait(struct task_struct *task){
 
 	int a;
 	a = do_wait(&wo);
-	printk("[program2] : get SIGTERM signal");
-	output_info(status);
+
+    printk("[program2] : wo_stat = %d\n", wo.wo_stat);
+
+	output_info(wo.wo_stat);
 	
 	put_pid(wo_pid);
 	return;
 }
 
 // implement fork function
-int my_fork(void){
+int my_fork(void *argc){
 	
 	//set default sigaction for current process
 	int i;
@@ -162,25 +148,25 @@ int my_fork(void){
 		k_action->sa.sa_flags = 0;
 		k_action->sa.sa_restorer = NULL;
 		sigemptyset(&k_action->sa.sa_mask);
-		k_action++;
-	}
+		k_action++;	}
 	
 	/* fork a process using kernel_clone or kernel_thread */
 
-	task = kthread_create(&my_exec, NULL, "my_thread");
-
-	/* execute a test program in child process */
-	if(!IS_ERR(task)){
-		printk(KERN_INFO "[program2] : module_init create kthread start");
-		// throw the task from new mode to task_list to run
-
-		wake_up_process(task);
-	}
-	printk("[program2] : The child process has pid = %d\n", task->pid);
-	printk("[program2] : This is the parent process, pid = %d\n", (int)current->pid);
+    struct kernel_clone_args kargs = {
+        .flags = SIGCHLD,
+        .exit_signal = SIGCHLD,
+        .stack = &my_exec,
+        .stack_size = 0,
+        .parent_tid = NULL,
+        .child_tid =  NULL,
+    };
+    pid_t pid = kernel_clone(&kargs);
+    
+	printk("[program2] : The child process has pid = %d\n", (int)pid);
+	printk("[program2] : This is the parent process, pid = %d\n", task->pid);
 	
 	/* wait until child process terminates */
-	my_wait(task);
+	my_wait(pid);
 	
 	return 0;
 }
@@ -192,8 +178,15 @@ static int __init program2_init(void){
 	/* write your code here */
 	
 	/* create a kernel thread to run my_fork */
-	my_fork();
-	
+	task = kthread_create(&my_fork, NULL, "my_thread");
+
+	/* execute a test program in child process */
+	if(!IS_ERR(task)){
+		printk("[program2] : module_init create kthread start");
+		// throw the task from new mode to task_list to run
+
+		wake_up_process(task);
+	}
 	return 0;
 }
 
