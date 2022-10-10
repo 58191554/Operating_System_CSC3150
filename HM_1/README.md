@@ -373,8 +373,8 @@ $./pstree
     ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%208.png)
     
     ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%209.png)
-    
-    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%210.png)
+    change
+    ![[Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%210.png)](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%2010.png)
     
     ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%211.png)
     
