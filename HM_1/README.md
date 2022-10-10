@@ -354,34 +354,34 @@ $./pstree
 
 - Appendix 1
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%201.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%201.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%202.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%202.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%203.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%203.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%204.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%204.png)
     
 - [Appendix 2](https://www.notion.so/HM1-Report-System-Process-in-Linux-System-72852556d9f949068836ce6955347770)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%205.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%205.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%206.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%206.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%207.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%207.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%208.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%208.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%209.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%209.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%2010.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%210.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%2011.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%211.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%2012.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%212.png)
     
 - Appendix 3
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%2013.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%213.png)
     
-    ![Untitled](HM1%20Report%20System%20Process%20in%20Linux%20System%2072852556d9f949068836ce6955347770/Untitled%2014.png)
+    ![Untitled](https://github.com/58191554/Operating-System-longda/blob/main/HM_1/img/Untitled%214.png)
