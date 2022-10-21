@@ -13,16 +13,6 @@ pthread_t * th;
 pthread_mutex_t mutexQueue;
 
 my_item_t taskQueue[5000];
-int taskCount = 0;
-
-// check if any thread in the thread_arr is free.
-int try_pop(struct my_queue work_queue){
-    // return 1 if true.
-    return 0;
-}
-void executeTask(my_item_t *task){
-    task->taskFunction(task->args);
-}
 
 
 void submitTask(my_item_t task){
@@ -38,18 +28,17 @@ void* startThread(void* args){
         my_item_t *task;
 
         pthread_mutex_lock(&mutexQueue);
-        if(work_queue.size > 0){
-            task = work_queue.head;
-            int i ;
-            // TODO try pop the task from the my_queue
-            work_queue.size--;
+        if(taskCount > 0){
+            task = &taskQueue[0];
+            for(int i = 0; i < taskCount-1; i++){
+                taskQueue[i] = taskQueue[i+1];
+            }
+            taskCount --;
         }
         pthread_mutex_unlock(&mutexQueue);
 
-        executeTask(task);
     }
 }
-
 
 void async_init(int num_threads) {
     /** TODO: create num_threads threads and initialize the thread pool **/
@@ -60,26 +49,29 @@ void async_init(int num_threads) {
     THREAD_NUM = num_threads;
     pthread_t th[num_threads];
     // need a array to store the thread in the thread pool
-    for (int i = 0; i < num_threads; i++){
+    int i;
+    for (i = 0; i < num_threads; i++){
         if(pthread_create(&th[i], NULL, &startThread, NULL) != 0){
-            // perror("Failed to create the thread");
+            perror("Failed to create the thread");
         }
     }
-    // a joiner object to join
+    // // a joiner object to join
 
     return ;
 }   
 
 void async_run(void (*hanlder)(int), int args) {
 
-    // int i;
-    // my_item_t t = {
-    //     .taskFunction = hanlder,
-    //     .args = args
-    // };
+    taskCount++;
+    // printf("now we have %d jobs to do%d\n", taskCount, &taskCount);
+    int i;
+    my_item_t t = {
+        .taskFunction = hanlder,
+        .args = args
+    };
 
-    // // submitTask the task my_item_t t
-    // submitTask(t);
+    // submitTask the task my_item_t t
+    submitTask(t);
 
     return ;
 }
