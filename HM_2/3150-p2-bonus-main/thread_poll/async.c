@@ -4,22 +4,12 @@
 #include "utlist.h"
 
 // an array of threads
-pthread_t * th;
-pthread_mutex_t mutexQueue;
-// a queue of tasks
-my_queue_t workQueue ;
-my_queue_t *workQueuePt = &workQueue;
-
-void submitTask(my_item_t *task){
-    pthread_mutex_lock(&mutexQueue);
-    enqueue(workQueuePt, task);
-    printf("the queue size is %d\n", workQueue.size);
-    pthread_mutex_unlock(&mutexQueue);
-}
 
 void enqueue(my_queue_t *queue, my_item_t *item){
+    printf("enqueue, the queue size is %d\n", queue->size);
     if(queue->size == 0){
         queue->head = item;
+        queue->tail = item;
     }
     else{
         queue->tail->next = item;
@@ -29,64 +19,86 @@ void enqueue(my_queue_t *queue, my_item_t *item){
 }
 
 my_item_t * dequeue(my_queue_t *queue){
+    printf("dequeue, the queue size is %d\n", queue->size);
+
     if(queue->size == 0){
         return NULL;
     }
     else{
         int last = queue->tail;
-        queue->tail = queue->tail->prev;
+        // if only one node in queue
+        if(queue->size == 1){
+            queue->head = NULL;
+            queue->tail = NULL;
+        }
+        // if more than 1 node in queue
+        else{
+            queue->tail = queue->tail->prev;
+        }
+        queue->size --;
         return last;
     }
-    queue->size --;
-}
-
-void executeTask(my_item_t * task){
-    printf("task = %d", task->taskFunction);
-    printf("args = %d", task->args);
-    task->taskFunction(task->args);
 }
 
 void* startThread(void* args){
+    printf("startThread\n");
     while(1){
         my_item_t *task;
+        if(work_q_pt->size >0){
+            // pop the task from the queue
+            pthread_mutex_lock(&mutex);
+            while(work_q_pt->size == 0){
+                pthread_cond_wait(&cond, &mutex);
+            }
+            if(work_q_pt->size > 0){
+                printf("queue size = %d\n", work_q_pt->size);
+                task = work_q_pt->head;
+                DL_DELETE(work_q_pt->head, work_q_pt->head);
+                work_q_pt->size--;
+                printf("dequeue, queue size = %d\n", work_q_pt->size);
+            }
+            pthread_mutex_unlock(&mutex);
 
-        pthread_mutex_lock(&mutexQueue);
-        if(workQueuePt->size > 0){
-            printf("myQueue size = %d", workQueuePt->size);
-            task = dequeue(workQueuePt->head);
-            workQueuePt->size--;
+            // do the task
+            printf("task begin...\n");
+            task->taskFunction(task->args);
+            printf("task done...\n");
         }
-        pthread_mutex_unlock(&mutexQueue);
-        executeTask(task);
     }
 }
 
 void async_init(int num_threads) {
     /** TODO: create num_threads threads and initialize the thread pool **/
-    workQueue.head = NULL;
-    workQueue.size = 0;
-    pthread_mutex_init(&mutexQueue, NULL);
-    pthread_t th[num_threads];
-    // need a array to store the thread in the thread pool
-    int i;
+    my_queue_t work_queue = {
+        .size = 0,
+        .head = NULL,
+        .tail = NULL
+    };
+    work_q_pt = (my_queue_t*)malloc(sizeof(work_queue));
 
-    for (i = 0; i < num_threads; i++){
-        if(pthread_create(&th[i], NULL, &startThread, NULL) != 0){
-            perror("Failed to create the thread");
-        }
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&cond, NULL);
+    threads[num_threads];
+    // pthread_create(&one_thread, NULL, &startThread, NULL);
+    for(int i = 0; i < num_threads; i++){
+        pthread_create(&threads[i], NULL, &startThread, NULL);
     }
-
     return ;
 }   
 
 void async_run(void (*hanlder)(int), int args) {
-    // submitTask the task my_item_t t
-    my_item_t t = {
-        .taskFunction = hanlder,
-        .args = args
-    };
+    
+    // hanlder(args);
 
-    submitTask(&t);
+    my_item_t *it_pt = malloc(sizeof(my_item_t));
+    it_pt->taskFunction = hanlder;
+    it_pt->args = args;
 
+    pthread_mutex_lock(&mutex);
+    printf("done...");
+    DL_APPEND(work_q_pt->head, it_pt);
+    work_q_pt->size++;
+    printf("now queue size is %d", work_q_pt->size);
+    pthread_mutex_unlock(&mutex);
     return ;
 }
