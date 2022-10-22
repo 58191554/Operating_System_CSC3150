@@ -62,8 +62,9 @@ void printMap(void){
 void *logs_move( void *t ){
 
 	/*  Move the logs  */
-	int count = 0;
-	while(state == 0 && count < 10){
+
+	while(state == 0){
+		pthread_mutex_lock(&mutex);
 		for(int i = 1; i < ROW ; i++){
 			// odd row go right
 			if(i % 2 == 1){
@@ -102,24 +103,97 @@ void *logs_move( void *t ){
 				}
 			}
 		}
+		// frog shift with the log
+		if(frog.x >0 && frog.x <10){
+			if(frog.x % 2 == 1)
+				frog.y ++;
+			else
+				frog.y --;
+		}
+		map[frog.x][frog.y] = '0';
+		/*  Print the map on the screen  */
 		printMap();
+
+		/*  Check game's status  */
+
+		// left or right out
+		if(frog.y > COLUMN-1 || frog.y < 0)
+			state = -1;
+		// if frog on bank
+		else if(frog.x == 0)
+			state = 1;
+		else if(frog.x == 10)
+			state = 0;		
+		// if frog on entire log 
+		else if(log_pos[frog.x] + LOGLEN < COLUMN -1){
+			if(frog.y>=log_pos[frog.x] && frog.y <= log_pos[frog.x]+LOGLEN)
+				state = 0;
+			else
+				state = -1;
+		}
+		// if frog on half log
+		else{
+			if(frog.y<log_pos[frog.x]+LOGLEN - COLUMN || frog.y > log_pos[frog.x])
+				state = 0;
+			else
+				state = -1;
+		}
+
+		if(state == -1)
+			printf("YOU LOSE...");
+		if(state == 1)
+			printf("YOU WIN...");
+		pthread_mutex_unlock(&mutex);
 		sleep(1);
-		count ++;
 	}
-
-
-	/*  Check keyboard hits, to change frog's position or quit the game. */
-
-	
-	/*  Check game's status  */
-
-
-	/*  Print the map on the screen  */
-
+	state = -1;
 	return NULL;
 }
 
 void *frog_control(void* arg){
+
+	/*  Check keyboard hits, to change frog's position or quit the game. */
+	while(state == 0){
+		int pre_x = frog.x;
+		int pre_y = frog.y;
+		if(kbhit()){
+			printf("previous frog:%d, %d", frog.x, frog.y);
+
+			pthread_mutex_lock(&mutex);
+			char kb;
+			kb = getchar();
+			if(kb == 'q' || kb == 'Q'){
+				state = 2;
+				printf("QUIT GAME...");
+			}
+			if(kb == 'w' || kb == 'W'){
+				frog.x --;
+			}
+			if(kb == 's' || kb == 'S'){
+				frog.x ++;
+			}
+			if(kb == 'a' || kb == 'A'){
+				frog.y --;
+			}
+			if(kb == 'd' || kb == 'D'){
+				frog.y ++;
+			}
+			printf("key board catch: %d", kb);
+			printf("now frog:%d, %d", frog.x, frog.y);
+
+			// update the map
+			map[frog.x][frog.y] = '0';
+			// if the frog is on the bank
+			if(pre_x == 10 || pre_x == 0)
+				map[pre_x][pre_y] = '|';
+
+			// the frog is on a log
+			else
+				map[pre_x][pre_y] = '=';
+			pthread_mutex_unlock(&mutex);
+		}
+	}
+	
 	return NULL;
 }
 
@@ -162,20 +236,13 @@ int main( int argc, char *argv[] ){
 	printMap();
 
 	/*  Create pthreads for wood move and frog control.  */
-	int rc1, rc2;
-
 	pthread_t log_t, frog_t;
-	rc1 = pthread_create(&log_t, NULL, logs_move, NULL);
-	rc2 = pthread_create(&frog_t, NULL, frog_control, NULL);
+
+	pthread_mutex_init(&mutex, NULL);
+
+	pthread_create(&log_t, NULL, logs_move, NULL);
+	pthread_create(&frog_t, NULL, frog_control, NULL);
 	/*  Display the output for user: win, lose or quit.  */
-	if(rc1){
-		printf("ERROR: return code from pthread_create() is %d", rc1);
-		exit(1);
-	}
-	if(rc2){
-		printf("ERROR: return code from pthread_create() is %d", rc2);
-		exit(1);
-	}
 
 	/* Wait for game to end */
 	pthread_join(log_t, NULL);
