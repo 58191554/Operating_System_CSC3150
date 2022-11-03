@@ -1,4 +1,4 @@
-﻿#ifndef VIRTUAL_MEMORY_H
+#ifndef VIRTUAL_MEMORY_H
 #define VIRTUAL_MEMORY_H
 
 #include <cuda.h>
@@ -7,6 +7,11 @@
 
 typedef unsigned char uchar;
 typedef uint32_t u32;
+
+struct memory_item{
+  struct memory_item *up;
+  int page_number;
+};
 
 struct VirtualMemory {
   uchar *buffer;
@@ -19,9 +24,13 @@ struct VirtualMemory {
   int PHYSICAL_MEM_SIZE;
   int STORAGE_SIZE;
   int PAGE_ENTRIES;
+
+  struct memory_item * LRU_bottom;
+  struct memory_item * LRU_top;
+
+  int phyMem_cnt;
 };
 
-// TODO
 __device__ void vm_init(VirtualMemory *vm, uchar *buffer, uchar *storage,
                         u32 *invert_page_table, int *pagefault_num_ptr,
                         int PAGESIZE, int INVERT_PAGE_TABLE_SIZE,
