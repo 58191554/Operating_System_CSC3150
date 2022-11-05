@@ -6,7 +6,8 @@
 __device__ void init_invert_page_table(VirtualMemory *vm) {
 	
   	for (int i = 0; i < vm->PAGE_ENTRIES; i++) {
-  	  	vm->invert_page_table[i] = 2;
+		// the frame index is i
+  	  	vm->invert_page_table[i] = -1;		
   	}
 }
 
@@ -48,134 +49,103 @@ __device__ void vm_init(VirtualMemory *vm, uchar *buffer, uchar *storage,
 	vm->phyMem_cnt = 0;
 }
 
-// print the current sequence of LRU stack
-__device__ void printLRUStack(VirtualMemory *vm){
+__device__ void showLRU(VirtualMemory *vm){
 	struct memory_item *temp = vm->LRU_bottom;
-	while(temp!= NULL){
-		if(temp->up == NULL)
-			printf("%d \n ", temp->page_number);
-		else
-			printf("%d -> ", temp->page_number);
+	while(temp->up != NULL){
+		printf("%d ->", temp->page_number);
 		temp = temp->up;
 	}
-	return;
+	printf("%d\n", temp->page_number);
 }
 
-__device__ void update_LRU(VirtualMemory *vm, int page_num){	// update the stack 
+__device__ void update_LRU(VirtualMemory *vm, int page_num){		// put the page_num to the top of the stack
 
-	struct memory_item* temp = vm->LRU_bottom;
-	struct memory_item* target = (struct memory_item *)malloc(sizeof(memory_item));	
-	if(page_num == 90676)
-		printf("Attention\n");
+	struct memory_item *temp = vm->LRU_bottom;
+	struct memory_item *target = (struct memory_item*)malloc(sizeof(memory_item));
 
-	if(temp->page_number == -1){								// if the first is unused
-		temp->page_number = page_num;
+	if(vm->LRU_bottom->page_number == -1){							// initialize the LRU_bottom
+		vm->LRU_bottom->page_number = page_num;
 		vm->LRU_top->page_number = page_num;
-		return;
 	}
-	if(temp->page_number == page_num && temp->up == NULL){		// if the only element is the pagenum
-		return;
+	else if(vm->LRU_top->page_number == page_num){					// already top
+		return;	
 	}
-	if(vm->LRU_top->page_number == page_num){					// if the top element is the pagenum
-		return;
-	}
-	while(temp->up != NULL){
-
-		if(temp->up->page_number == page_num){
-			target = temp->up;
-			temp->up = target->up;
+	else if(vm->LRU_bottom->page_number == page_num){				// remove bottom to top
+		vm->LRU_bottom = vm->LRU_bottom->up;
+		vm->LRU_top = temp;
+		while(temp->up != NULL){
 			temp = temp->up;
-
-			while(temp->up != NULL){
-				temp = temp->up;
-			}
-			temp->up = target;
-			vm->LRU_top = target;
-			// printLRUStack(vm);
-			return;
-
 		}
-		temp = temp->up;
-	}	
-	target->page_number = page_num;
-	temp->up = target;
-	vm->LRU_top = target;
-	return;
+		target->page_number = page_num;
+		temp->up = target;
+		// showLRU(vm);
+	}
+	else{															// find the target and remove to top
+		while(temp->up != NULL){
+			if(temp->up->page_number == page_num){
+				target = temp->up;
+				temp->up = target->up;
+				temp = temp->up;
+				target->up = NULL;
+				while(temp->up !=NULL){
+					temp = temp->up;
+				}
+				temp->up = target;
+				vm->LRU_top = target;
+				// showLRU(vm);
+				return;
+			}
+			temp = temp->up;
+		} 
+		target->page_number = page_num;
+		target->up = NULL;
+		temp->up = target;
+		vm->LRU_top = target;
+		// showLRU(vm);
+	}
 }
 
-__device__ void delete_LRU(VirtualMemory * vm, int page_num){
-	if(vm->LRU_bottom == NULL){
-		// printf("LRU: empty\n");
-		return;
-	}
-	struct memory_item *temp = vm->LRU_bottom;
-	if(vm->LRU_bottom->page_number == page_num && vm->LRU_bottom->up != NULL){
-		// printf("LRU: delete the first one\n");
-		vm->LRU_bottom = vm->LRU_bottom->up;
-		return;
-	}
-	while(temp->up != NULL){
-		if(temp->up->page_number == page_num){
-			if(temp->up->up != NULL){
-				temp->up = temp->up->up;
-				// printf("LRU: delete 1\n");
-				return;
-			}
-			else{
-				temp->up = NULL;
-				// printf("LRU: delete 2\n");
-				return;
-			}
+__device__ int get_frameIdx(VirtualMemory *vm, int page_num){
+	// find frame index of the given page number in the page table
+	for(int i = 0; i < vm->PAGE_ENTRIES; i++){
+		if(vm->invert_page_table[i] == page_num){
+			return i;
 		}
-		temp = temp->up;
+		else if(vm->invert_page_table[i] == -1){		// the page entry is not used
+			return i;
+		}
 	}
-	// printf("LRU: no delete\n");
-	return;
+	return -1;		// -1 if the page number isn't exist in the page table
 }
 
 __device__ uchar vm_read(VirtualMemory *vm, u32 addr) {
   	/* Complate vm_read function to read single element from data buffer */
+	uchar out;	
+	int p = addr/vm->PAGESIZE;
+	int d = addr%vm->PAGESIZE;
+	int f = get_frameIdx(vm, p);
 
-	int p = addr / vm->PAGESIZE;
-	int d = addr % vm->PAGESIZE;
-	int f = vm->invert_page_table[p];
-	uchar out;
-	update_LRU(vm, p);
-
-	if(vm->invert_page_table[p+vm->PAGE_ENTRIES] == 0){
-		// printf("[read] invalid: page = %d state=%d\n", p, vm->invert_page_table[p+vm->PAGE_ENTRIES]);
-
-		vm->pagefault_num_ptr++;
-		// perform page replacement
-		// printf(" perform page replacement\n");
+	if(f == -1){
 		int victim_p = vm->LRU_bottom->page_number;
-		// printf("victim_p = %d\n", victim_p);
-		// int victim_f = vm->invert_page_table[victim_p];
-		int victim_f = victim_p %(vm->PHYSICAL_MEM_SIZE/vm->PAGESIZE);
-		// printf("[read]step 1: swap out victim page\n");
+		vm->LRU_bottom = vm->LRU_bottom->up;
+		int victim_f = get_frameIdx(vm, victim_p);
+
+		for(int i = 0;i<vm->PAGESIZE; i++){
+			vm->storage[victim_p*vm->PAGESIZE+i] = vm->buffer[victim_f*vm->PAGESIZE + i];
+		}
+		f = victim_f;
+		vm->invert_page_table[victim_f] = p;
 		for(int i = 0; i < vm->PAGESIZE; i++){
-			vm->storage[victim_f*vm->PAGESIZE+i] = vm->buffer[victim_p*vm->PAGESIZE+i];
-			// printf("%d ", vm->storage[victim_f*vm->PAGESIZE+i]);
+			vm->buffer[f*vm->PAGESIZE+i] = vm->storage[p*vm->PAGESIZE + i];
 		}
-		// step 2: change to invalid
-		vm->invert_page_table[victim_p] = 0;
-		delete_LRU(vm, victim_p);
-		// printf("[read]step 3: swap derised page in\n");
-		for (int i = 0; i < vm->PAGESIZE; i++){
-			vm->buffer[f*vm->PAGESIZE+i] = vm->storage[f*vm->PAGESIZE+i];
-			printf("%d ", vm->buffer[f*vm->PAGESIZE+i]);
-		}
-		// read the value
-		out = vm->buffer[f*vm->PAGESIZE+d];
-		// step 4: reset page table as valid for new page
-		vm->invert_page_table[p+vm->PAGE_ENTRIES] = 1;
-		delete_LRU(vm, victim_p);
 	}
-	else{
-		// printf("valid\n");
-		out = vm->buffer[f*vm->PAGESIZE + d];
+	out = vm->buffer[f*vm->PAGESIZE + d];
+	vm->invert_page_table[f] = p;
+	if(vm->LRU_top->page_number != p){
+		update_LRU(vm, p);
 	}
-	printf("read out = %d\n", out);
+
+	printf("addr = %d from physical addr = {%d, f = %d}read out = %d\n",addr, f*vm->PAGESIZE + d, f, out);
   	return out; 
 }
 
@@ -183,53 +153,32 @@ __device__ void vm_write(VirtualMemory *vm, u32 addr, uchar value) {
   	/* Complete vm_write function to write value into data buffer */
 	int p = addr / vm->PAGESIZE;
 	int d = addr % vm->PAGESIZE;
-	int f = p %(vm->PHYSICAL_MEM_SIZE/vm->PAGESIZE);
-	// periodic allocate the f to the p in page table
-	// printf("p:%d, d:%d, f:%d\n", p, d, f);
-	// printf("addr = %d, vallue = %d\n", addr, value);
+	int f = get_frameIdx(vm, p);				// find the corresponding frame
 
-	
-	update_LRU(vm, p);
-	// if the page is unused
-	if(vm->invert_page_table[p] == 2){
-		// printf("[write]unused:page = %d state=%d\n", p, vm->invert_page_table[p+vm->PAGE_ENTRIES]);
-		vm->buffer[f*vm->PAGESIZE+d] = value;
-		vm->invert_page_table[p] = 1;
-	}
-	// if the page entry is invalid
-	else if(vm->invert_page_table[p] == 0){
-		// printf("[write] invalid: page = %d state=%d\n", p, vm->invert_page_table[p+vm->PAGE_ENTRIES]);
-		vm->pagefault_num_ptr++;
-		// perform page replacement
+	if(f == -1){								// if the page number is not in the page table
 		int victim_p = vm->LRU_bottom->page_number;
-		// int victim_f = vm->invert_page_table[victim_p];
-		int victim_f = victim_p %(vm->PHYSICAL_MEM_SIZE/vm->PAGESIZE);
+		vm->LRU_bottom = vm->LRU_bottom->up;
+		int victim_f = get_frameIdx(vm, victim_p);
 
-		// printf("victim_p = %d, victim_f = %d\n", victim_p, victim_f);
-		// printf("[write]step 1: swap out victim page\n");
+		// store victime buffer to disk
+		for(int i= 0; i < vm->PAGESIZE; i++){
+			vm->storage[victim_p * vm->PAGESIZE + i] = vm->buffer[victim_f*vm->PAGESIZE + i];
+		}
+		f = victim_f;
+		vm->invert_page_table[victim_f] = p;
+		// swap target disk to buffer
 		for(int i = 0; i < vm->PAGESIZE; i++){
-			vm->storage[victim_p*vm->PAGESIZE+i] = vm->buffer[victim_f*vm->PAGESIZE+i];
-			// printf("%d ", vm->storage[victim_f*vm->PAGESIZE+i]);
+			vm->buffer[f*vm->PAGESIZE + i] = vm->storage[p*vm->PAGESIZE + i];
+			// }
 		}
-		// step 2: change to invalid
-		vm->invert_page_table[victim_p] = 0;
-		// printf("[write]step 3: swap derised page in");
-		for (int i = 0; i < vm->PAGESIZE; i++){
-			vm->buffer[f*vm->PAGESIZE+i] = vm->storage[p*vm->PAGESIZE +i];
-			// printf("%d ", vm->buffer[f*vm->PAGESIZE+i]);
-		}
-		// write in new value
-		vm->buffer[f*vm->PAGESIZE+d] = value;
-		// step 4: reset page table as valid for new page
-		vm->invert_page_table[p] = 1;
-		delete_LRU(vm, victim_p);
-		// printLRUStack(vm);
+	}
 
+	vm->buffer[f*vm->PAGESIZE + d] = value;
+	vm->invert_page_table[f] = p;
+	if(vm->LRU_top->page_number != p){
+		update_LRU(vm, p);
 	}
-	else{
-		// printf("valid: %d %d = %d\n", vm->invert_page_table[p + vm->PAGE_ENTRIES],vm->invert_page_table[p], f);
-		vm->buffer[f*vm->PAGESIZE + d] = value;
-	}
+
 	printf("write buffer: logical address = {%d, p=%d} => physical address = {%d,f=%d} <- %d = %d\n ", 
 				addr,p, f*vm->PAGESIZE+d, f, vm->buffer[f*vm->PAGESIZE+d], value);
 }
