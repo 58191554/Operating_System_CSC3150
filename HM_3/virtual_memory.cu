@@ -126,6 +126,7 @@ __device__ uchar vm_read(VirtualMemory *vm, u32 addr) {
 	int f = get_frameIdx(vm, p);
 
 	if(f == -1){
+		(*(vm->pagefault_num_ptr))++;
 		int victim_p = vm->LRU_bottom->page_number;
 		vm->LRU_bottom = vm->LRU_bottom->up;
 		int victim_f = get_frameIdx(vm, victim_p);
@@ -156,6 +157,7 @@ __device__ void vm_write(VirtualMemory *vm, u32 addr, uchar value) {
 	int f = get_frameIdx(vm, p);				// find the corresponding frame
 
 	if(f == -1){								// if the page number is not in the page table
+		(*(vm->pagefault_num_ptr))++;
 		int victim_p = vm->LRU_bottom->page_number;
 		vm->LRU_bottom = vm->LRU_bottom->up;
 		int victim_f = get_frameIdx(vm, victim_p);
@@ -186,4 +188,8 @@ __device__ void vm_write(VirtualMemory *vm, u32 addr, uchar value) {
 __device__ void vm_snapshot(VirtualMemory *vm, uchar *results, int offset, int input_size) {
   	/* Complete snapshot function togther with vm_read to load elements from data
   	 * to result buffer */
+	for(int i = 0; i<input_size; i++){
+		int value = vm_read(vm, i);
+		results[i + offset] = value;
+	}
 }
