@@ -11,8 +11,16 @@ __device__ void init_invert_page_table(VirtualMemory *vm) {
   	}
 }
 
+__device__ void init_swap_table(VirtualMemory *vm){
+
+	for (int i = 0; i < vm->STORAGE_SIZE+vm->PHYSICAL_MEM_SIZE; i++){
+		vm->swap_table[i] = -1;
+	}
+}
+
 __device__ void vm_init(VirtualMemory *vm, uchar *buffer, uchar *storage,
-                        u32 *invert_page_table, int *pagefault_num_ptr,
+                        int *invert_page_table, int *pagefault_num_ptr,
+						int *swap_table,
                         int PAGESIZE, int INVERT_PAGE_TABLE_SIZE,
                         int PHYSICAL_MEM_SIZE, int STORAGE_SIZE,
                         int PAGE_ENTRIES) {
@@ -21,6 +29,7 @@ __device__ void vm_init(VirtualMemory *vm, uchar *buffer, uchar *storage,
   	vm->storage = storage;
   	vm->invert_page_table = invert_page_table;
   	vm->pagefault_num_ptr = pagefault_num_ptr;
+	vm->swap_table = swap_table;
 	
   	// init constants
   	vm->PAGESIZE = PAGESIZE;
@@ -33,9 +42,8 @@ __device__ void vm_init(VirtualMemory *vm, uchar *buffer, uchar *storage,
   	// before first vm_write or vm_read
   	init_invert_page_table(vm);
 
-	// for(int i = 0; i < 100; i++){
-	// 	printf("%d ", vm->invert_page_table[i + vm->PAGE_ENTRIES]);
-	// }
+	init_swap_table(vm);
+
 	
 	// init LRU queue
 	struct memory_item *tail;
@@ -45,8 +53,8 @@ __device__ void vm_init(VirtualMemory *vm, uchar *buffer, uchar *storage,
 	vm->LRU_bottom = tail;
 	vm->LRU_top = tail;
 
-	// initialize the physical memory count as 0
-	vm->phyMem_cnt = 0;
+	// initialize the swap table allocate storage count as 0
+	vm->storage_cnt = 0;
 }
 
 __device__ void showLRU(VirtualMemory *vm){
@@ -112,6 +120,7 @@ __device__ int get_frameIdx(VirtualMemory *vm, int page_num){
 			return i;
 		}
 		else if(vm->invert_page_table[i] == -1){		// the page entry is not used
+			(*(vm->pagefault_num_ptr))++;
 			return i;
 		}
 	}
@@ -128,25 +137,40 @@ __device__ uchar vm_read(VirtualMemory *vm, u32 addr) {
 	if(f == -1){
 		(*(vm->pagefault_num_ptr))++;
 		int victim_p = vm->LRU_bottom->page_number;
-		vm->LRU_bottom = vm->LRU_bottom->up;
+		vm->LRU_bottom = vm->LRU_bottom->up;											// pop out
 		int victim_f = get_frameIdx(vm, victim_p);
-
+		// printf("victim_f = %d\n", victim_f);
+		int s_in = vm->swap_table[p];
+		if(s_in == -1 && vm->storage_cnt < vm->STORAGE_SIZE){
+			vm->swap_table[p] = vm->storage_cnt;
+			s_in = vm->storage_cnt;
+			vm->storage_cnt ++;
+		}
+		printf("s_in = %d\n", s_in);
+		int data_out[32]; 
 		for(int i = 0;i<vm->PAGESIZE; i++){
-			vm->storage[victim_p*vm->PAGESIZE+i] = vm->buffer[victim_f*vm->PAGESIZE + i];
+			data_out[i] = vm->storage[s_in*vm->PAGESIZE + i];
+			vm->storage[s_in*vm->PAGESIZE+i] = vm->buffer[victim_f*vm->PAGESIZE + i];
 		}
 		f = victim_f;
 		vm->invert_page_table[victim_f] = p;
+		printf("f = %d\n", f);
 		for(int i = 0; i < vm->PAGESIZE; i++){
-			vm->buffer[f*vm->PAGESIZE+i] = vm->storage[p*vm->PAGESIZE + i];
+			vm->buffer[f*vm->PAGESIZE+i] = data_out[i];
 		}
+		vm->swap_table[p] = -1;
+		vm->swap_table[victim_p] = s_in;
+
+		// printf("vm->swap_table[p] = %d\n", vm->swap_table[p]);
+		// printf("vm->swap_table[victim_p] = %d\n", vm->swap_table[victim_p]);
 	}
 	out = vm->buffer[f*vm->PAGESIZE + d];
 	vm->invert_page_table[f] = p;
 	if(vm->LRU_top->page_number != p){
 		update_LRU(vm, p);
 	}
-
-	printf("addr = %d from physical addr = {%d, f = %d}read out = %d\n",addr, f*vm->PAGESIZE + d, f, out);
+	if(addr % 32 == 0)
+		printf("addr = %d from physical addr = {%d, f = %d}read out = %d\n",addr, f*vm->PAGESIZE + d, f, out);
   	return out; 
 }
 
@@ -159,20 +183,29 @@ __device__ void vm_write(VirtualMemory *vm, u32 addr, uchar value) {
 	if(f == -1){								// if the page number is not in the page table
 		(*(vm->pagefault_num_ptr))++;
 		int victim_p = vm->LRU_bottom->page_number;
-		vm->LRU_bottom = vm->LRU_bottom->up;
+		vm->LRU_bottom = vm->LRU_bottom->up;										// pop out
 		int victim_f = get_frameIdx(vm, victim_p);
-
+		int s_in = vm->swap_table[p];
+		if(s_in == -1 && vm->storage_cnt < vm->STORAGE_SIZE){						// initialize the swap table entry
+			vm->swap_table[p] = vm->storage_cnt;
+			s_in = vm->storage_cnt;
+			vm->storage_cnt ++;
+		}
+		printf("s_in = %d\n", s_in);
+		int data_out[32];
 		// store victime buffer to disk
 		for(int i= 0; i < vm->PAGESIZE; i++){
-			vm->storage[victim_p * vm->PAGESIZE + i] = vm->buffer[victim_f*vm->PAGESIZE + i];
+			data_out[i] = vm->storage[s_in * vm->PAGESIZE + i];
+			vm->storage[s_in * vm->PAGESIZE + i] = vm->buffer[victim_f*vm->PAGESIZE + i];
 		}
 		f = victim_f;
 		vm->invert_page_table[victim_f] = p;
 		// swap target disk to buffer
 		for(int i = 0; i < vm->PAGESIZE; i++){
-			vm->buffer[f*vm->PAGESIZE + i] = vm->storage[p*vm->PAGESIZE + i];
-			// }
+			vm->buffer[f*vm->PAGESIZE + i] = data_out[i];
 		}
+		vm->swap_table[p] = -1;
+		vm->swap_table[victim_p] = s_in;
 	}
 
 	vm->buffer[f*vm->PAGESIZE + d] = value;
@@ -180,16 +213,15 @@ __device__ void vm_write(VirtualMemory *vm, u32 addr, uchar value) {
 	if(vm->LRU_top->page_number != p){
 		update_LRU(vm, p);
 	}
-
-	printf("write buffer: logical address = {%d, p=%d} => physical address = {%d,f=%d} <- %d = %d\n ", 
-				addr,p, f*vm->PAGESIZE+d, f, vm->buffer[f*vm->PAGESIZE+d], value);
-}
+	if(addr % 32 == 0)
+		printf("write buffer: logical address = {%d, p=%d} => physical address = {%d,f=%d} <- %d = %d\n ",addr,p, f*vm->PAGESIZE+d, f, vm->buffer[f*vm->PAGESIZE+d], value);
+}	
 
 __device__ void vm_snapshot(VirtualMemory *vm, uchar *results, int offset, int input_size) {
   	/* Complete snapshot function togther with vm_read to load elements from data
   	 * to result buffer */
 	for(int i = 0; i<input_size; i++){
-		int value = vm_read(vm, i);
-		results[i + offset] = value;
+		int value = vm_read(vm, i+offset);
+		results[i] = value;
 	}
-}
+}                                                  
