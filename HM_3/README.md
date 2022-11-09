@@ -99,8 +99,8 @@ In bonus version 1,
     ```
 2. Second, in the `user_program.cu` the task is done concurrently, which need to divide the give each thread its own logical address to visit.It is the same when we need to read all the data and do the snapshot
     ```cuda
-    	for(int i = 0; i < input_size/4; i++){
-		    int addr = i + thread_id*(input_size/4);
+        for(int i = 0; i < input_size/4; i++){
+            int addr = i + thread_id*(input_size/4);
     ```
 
 3. Third, the `invert_page_table` adds 1024 integer for the `thread_id`. They are firstly initialized as -1.
@@ -114,42 +114,42 @@ The same way as the normal task, **CHANGE THE TEST IN USER_PROGRAM.CU**
 **Output**
 Run the write all data, read all data, and do snapshot
 ```cuda
-	for(int i = 0; i < input_size/4; i++){
+    for(int i = 0; i < input_size/4; i++){
 
-		int addr = i + thread_id*(input_size/4);
-		// printf("thread_id = %d addr = %d\n",thread_id, addr);
-		if(thread_id == 0)
-			vm_write(vm, addr, input[addr], thread_id);
-		__syncthreads();
-		if(thread_id == 1)
-			vm_write(vm, addr, input[addr], thread_id);
-		__syncthreads();
-		if(thread_id == 2)
-			vm_write(vm, addr, input[addr], thread_id);
-		__syncthreads();
-		if(thread_id == 3)
-			vm_write(vm, addr, input[addr], thread_id);
-		__syncthreads();
-	}
+        int addr = i + thread_id*(input_size/4);
+        // printf("thread_id = %d addr = %d\n",thread_id, addr);
+        if(thread_id == 0)
+            vm_write(vm, addr, input[addr], thread_id);
+        __syncthreads();
+        if(thread_id == 1)
+            vm_write(vm, addr, input[addr], thread_id);
+        __syncthreads();
+        if(thread_id == 2)
+            vm_write(vm, addr, input[addr], thread_id);
+        __syncthreads();
+        if(thread_id == 3)
+            vm_write(vm, addr, input[addr], thread_id);
+        __syncthreads();
+    }
 
-	for(int i = 0; i < input_size/4 ; i ++){
+    for(int i = 0; i < input_size/4 ; i ++){
 
-		int addr = i + thread_id*(input_size/4);
-		if(thread_id == 0)
-			vm_read(vm, addr, thread_id);
-		__syncthreads();
-		if(thread_id == 1)
-			vm_read(vm, addr, thread_id);
-		__syncthreads();
-		if(thread_id == 2)
-			vm_read(vm, addr, thread_id);
-		__syncthreads();
-		if(thread_id == 3)
-			vm_read(vm, addr, thread_id);
-		__syncthreads();
-	}
+        int addr = i + thread_id*(input_size/4);
+        if(thread_id == 0)
+            vm_read(vm, addr, thread_id);
+        __syncthreads();
+        if(thread_id == 1)
+            vm_read(vm, addr, thread_id);
+        __syncthreads();
+        if(thread_id == 2)
+            vm_read(vm, addr, thread_id);
+        __syncthreads();
+        if(thread_id == 3)
+            vm_read(vm, addr, thread_id);
+        __syncthreads();
+    }
 
-	vm_snapshot(vm, results, 0, input_size, thread_id);
+    vm_snapshot(vm, results, 0, input_size, thread_id);
 ```
 ![](HM3pics\bonus_write_read_snap.png)
 Run the task 1(Change user_program.cu to support the multi-threads)
