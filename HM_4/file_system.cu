@@ -532,15 +532,23 @@ __device__ void fs_gsys(FileSystem *fs, int op)
 			fcb_arr[max_idx] = fcb1; 
 		}
 
-		// sort by create time
+		// // sort by create time
 		uchar *tmp = fcb_arr[0];
 		uchar *next = fcb_arr[1];
 		int cnt = 0;
 		while(cnt < fcb_num-1){
+
+			// printf("CNT = %d\n", cnt);
+			uchar *tmp = fcb_arr[cnt];
+			uchar *next = fcb_arr[cnt+1];
+
 			int tmp_size = *(tmp + 24)*256 + *(tmp+25);
 			int next_size = *(next + 24)*256 + *(next + 25);
+
 			if(tmp_size == next_size){
-				printf("%s size = %d, %s size = %d\n",tmp, tmp_size, next, next_size);
+
+				// printf("%s size = %d, %s size = %d\n",tmp, tmp_size, next, next_size);
+				// printf("I want to fuck you!!!\n");
 				// find the end
 				int same_size = tmp_size;
 				int f_num = 0;				// the number of files in the sub-array
@@ -552,6 +560,10 @@ __device__ void fs_gsys(FileSystem *fs, int op)
 					next += fs->FCB_SIZE;
 					f_num ++;
 				}
+
+				// for(int i = 0; i < f_num; i++){
+				// 	printf("Son of bitch = %s\n", sub_arr[i]);
+				// }
 
 				// sort
 				for(int i = 0; i < f_num-1; i++){
@@ -572,13 +584,14 @@ __device__ void fs_gsys(FileSystem *fs, int op)
 					fcb_arr[cnt+i] = fcb2;
 					fcb_arr[cnt+min_idx] = fcb1; 
 
-					sub_arr[cnt+i] = fcb2;
-					sub_arr[cnt+min_idx] = fcb1; 
+					sub_arr[i] = fcb2;
+					sub_arr[min_idx] = fcb1; 
 				}
-				printf("[SUB ARRAY]len = %d\n", f_num);
+				// printf("[SUB ARRAY]len = %d\n", f_num);
 				cnt += f_num;
 				tmp = fcb_arr[cnt];
 				next = fcb_arr[cnt+1];
+
 			}
 			else{
 				tmp +=fs->FCB_SIZE;
@@ -591,7 +604,7 @@ __device__ void fs_gsys(FileSystem *fs, int op)
       		uchar *fcb_cur = fcb_arr[i];
 			int len = *(fcb_cur+24)*256+*(fcb_cur+25);
 			int creat_time = *(fcb_cur+20)*256+*(fcb_cur+21);
-      		printf("%s len = %d, create time = %d\n",fcb_cur, len, creat_time);		
+      		printf("%s file size = %d, create time = %d\n",fcb_cur, len, creat_time);		
 		}
 	}
 }
