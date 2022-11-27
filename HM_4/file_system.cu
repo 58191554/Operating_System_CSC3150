@@ -1,4 +1,4 @@
-﻿#include "file_system.h"
+#include "file_system.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -56,13 +56,16 @@ __device__ u32 find_empty_fcb(FileSystem *fs){
 	return (u32)(-1);
 }
 
-__device__ u32 find_empty_bit(FileSystem *fs){
+__device__ int find_empty_bit(FileSystem *fs){
 	// allocate a empty or semi-empty bit in the SUPER BLOCK
 	uchar *bit_map = fs->volume;
 	for(int i = 0; i < fs->SUPERBLOCK_SIZE; i++){
-		// printf("bit[%d] = %d\n",i ,*(fs->volume+i));
-		if(*(bit_map+i) == 0){
-			return i;
+		uchar *bits = bit_map+i;
+		for(int j = 0; j < 8; j++){
+			int bit = (*bits >> j)%2;
+			if(bit == 0){
+				return i*8+j;
+			}
 		}
 	}
 	printf("no emtpy bit in SUPER BLOCK");
@@ -72,7 +75,7 @@ __device__ u32 fs_open(FileSystem *fs, char *s, int op)
 {
 	/* Implement open operation here */
 	// input the file name *s -> return the fcb_index int FCBs
-	printf("\n[open file]:%s\n", s);
+	// printf("\n[open file]:%s\n", s);
 	u32 fcb_idx;
 	uchar *start_fcb = fs->volume + fs->SUPERBLOCK_SIZE;
 	bool file_exist = false;
@@ -80,15 +83,14 @@ __device__ u32 fs_open(FileSystem *fs, char *s, int op)
 	// find the file name in FCB
 	for(int i = 0; i < fs->FCB_ENTRIES; i++){
 		uchar *fcb = start_fcb + i * fs->FCB_SIZE;
-		// printf("FCB[%d]:%d\n",i,  *fcb);
 		if(check_name(fcb, s)){
-			printf("find file\n");
 			file_exist = true;
 			fcb_idx = i;
 		}
 	}
 
 	if(file_exist){
+		// printf("fcb = %d\n", fcb_idx);
 		return fcb_idx;
 	}
 	else{
@@ -96,7 +98,7 @@ __device__ u32 fs_open(FileSystem *fs, char *s, int op)
 		if(op == G_WRITE){
 			// search for the empty fcb
 			fcb_idx = find_empty_fcb(fs);
-			printf("empty fcb = %d\n", fcb_idx);
+			// printf("empty fcb = %d\n", fcb_idx);
 
 			uchar *target_fcb=start_fcb + fcb_idx * fs->FCB_SIZE;
 			uchar *target_name = target_fcb;
@@ -114,18 +116,25 @@ __device__ u32 fs_open(FileSystem *fs, char *s, int op)
 			}
 			*target_name = '\0'; 
 			gtime++;
-			*target_create_time = gtime;
-			*target_modify_time = gtime;
-			*target_bit_size = 1;
+			*target_create_time = gtime/256;
+			*(target_create_time + 1) = gtime%256;
+			*target_modify_time = gtime/256;
+			*(target_modify_time + 1) = gtime%256;
+			*target_bit_size = 0;
+			*(target_bit_size+1) = 1;
 			*target_file_size = 0;
+			*(target_file_size+1) = 0;
 			*target_fcb_idx = fcb_idx;
-			// find empty or semi-empty bit
-			u32 empty_bit = find_empty_bit(fs);
-			printf("empty_bit = %d\n", empty_bit);
-			*target_bit_location = empty_bit;
+			// find empty bit
+			int empty_bit = find_empty_bit(fs);
+			// printf("empty_bit = %d\n", empty_bit);
+			*target_bit_location = empty_bit/256;
+			*(target_bit_location + 1) = empty_bit%256;
 
 			// occupy the empty bit
-			*(fs->volume+*target_bit_location) = 1;
+			uchar *bit = fs->volume + empty_bit/8;
+			*bit += 1<<(empty_bit%8);
+
 			return fcb_idx;
 		}
 		else if(op == G_READ){
@@ -138,23 +147,22 @@ __device__ void fs_read(FileSystem *fs, uchar *output, u32 size, u32 fp)
 {
 	/* Implement read operation here */
 	uchar *target_fcb = fs->volume + fs->SUPERBLOCK_SIZE + fp*fs->FCB_SIZE;
-	// uchar *target_fcb_modify_time = target_fcb + 22;
-	// uchar *bit_length = target_fcb + 26;
-	uchar *bit_location = target_fcb + 28;
+	uchar *target_bit_location = target_fcb + 28;
+
+	int bit_location = (*target_bit_location) * 256 + *(target_bit_location+1);
 
 	uchar *reader = fs->volume + 
 					fs->SUPERBLOCK_SIZE + 
 					(fs->FCB_ENTRIES*fs->FCB_SIZE) + 
-					fs->STORAGE_BLOCK_SIZE*(*bit_location);
-	
-	printf("[read]\n");
+					fs->STORAGE_BLOCK_SIZE*(bit_location);
+	// printf("[read]\n");
 	for(int i = 0; i < size; i++){
 		*output = *reader;
-		printf("%d ", *output);
+		// printf("%d ", *output);
 		reader ++;
 		output++;
 	}
-	printf("\n");
+	// printf("\n");
 }
 
 __device__ u32 find_fcb_from_bit(FileSystem *fs, int bit_num){
@@ -162,7 +170,8 @@ __device__ u32 find_fcb_from_bit(FileSystem *fs, int bit_num){
 	uchar *start_fcb = fs->volume + fs->SUPERBLOCK_SIZE;
 	for(int i = 0; i<fs->FCB_ENTRIES; i++){
 		uchar *target_bit_location = start_fcb + i*fs->FCB_SIZE + 28;
-		if(*(target_bit_location) == bit_num){
+		int bit_locaiton = *(target_bit_location)*256 + *(target_bit_location+1);
+		if(bit_locaiton == bit_num){
 			printf("find the fcb of the bit\n");
 			return i;
 		}
@@ -171,48 +180,184 @@ __device__ u32 find_fcb_from_bit(FileSystem *fs, int bit_num){
 }
 
 __device__ void compact_storage(FileSystem *fs){
-	printf("\n[compact]\n");
-	// set the copy storage array as the MAX_FILE_SIZE
-	uchar copy_storage[1048576];
-	// copy the volume to another disk
-	uchar *bit_ptr = fs->volume;
-	int bit_step = 0;
+	printf("\nCompact this Shit\n");
+	
+	uchar *bitBlock = fs->volume;
+	int cnt = 0;
+	int emtpy_bit = 0;
 
-	while(bit_step < fs->SUPERBLOCK_SIZE){
-		if(*bit_ptr == 0){
-			// if a hole
-			uchar fp = find_fcb_from_bit(fs, bit_step);
+	// find all empty bit shit
+	while(cnt < fs->SUPERBLOCK_SIZE*8){
+		int bit = ((*bitBlock)>>(cnt%8))%2;
+		if(bit == 0){
+
+			// find non-empty start
+			int head_idx = cnt;
+			uchar *findBlock;
+			if(head_idx%8 == 7){
+				findBlock = bitBlock + 1;
+			}
+			else{
+				findBlock = bitBlock;
+			}
+			int head_value = 0;
+			while(head_value == 0){
+				// printf("find ass hole in %d\n", head_idx);
+				head_idx++;
+
+				if(head_idx >=fs->SUPERBLOCK_SIZE*8){
+					printf("This stupid shit go to hell!!!\n");
+					return;
+				}
+
+				if(head_idx%8 == 0){
+					findBlock ++;
+				}
+				head_value = ((*findBlock>>(head_idx%8)))%2;
+			}
+
+			int head_fcb_num = find_fcb_from_bit(fs, head_idx);
+			uchar *head_fcb = fs->volume + fs->SUPERBLOCK_SIZE + head_fcb_num*fs->FCB_SIZE;
+
+			printf("head fcb = %s\n", head_fcb);
+
+			uchar *target_bit_size = head_fcb + 26;
+			uchar *target_bit_location = head_fcb + 28;
+
+			*target_bit_location = cnt/256;
+			*(target_bit_location + 1) = cnt%256;
+
+			int bit_size = *(target_bit_size)*256 + *(target_bit_size+1);
+			printf("bit_size = %d\n", bit_size);
+			int end_idx = head_idx + bit_size;
+
+			printf("this ass hole %d\n", cnt);
+			printf("this shit fxxk at %d\n", head_idx);
+			printf("this shit die at %d (not included)\n", end_idx);
+			
+			// change the bit map
+			uchar *BLOCK = fs->volume + cnt/8;
+			int offset = head_idx-cnt;
+
+			for(int i = 0; i < offset; i++){
+				*BLOCK += 1<<((cnt + i)%8);
+				if((cnt + i)%8==7)
+					BLOCK ++;
+			}
+
+			BLOCK = fs->volume + (end_idx -offset)/8;
+			
+			for(int j = 0; j < offset; j++){
+				*BLOCK -= 1<<((end_idx -offset + j)%8);
+				if((end_idx -offset + j)%8 == 7)
+					BLOCK ++;
+			}
+
+			// transfer the storage
+			for(int i = 0; i < bit_size; i++){
+				uchar *storageBlock = fs->volume + 
+										fs->SUPERBLOCK_SIZE+
+										(fs->FCB_ENTRIES*fs->FCB_SIZE) +
+										(head_idx + i)*fs->STORAGE_BLOCK_SIZE;
+
+				uchar *emptyBlock = fs->volume +
+										fs->SUPERBLOCK_SIZE+
+										(fs->FCB_ENTRIES*fs->FCB_SIZE) +
+										(cnt + i)*fs->STORAGE_BLOCK_SIZE;
+				
+				for(int j = 0; j < fs->STORAGE_BLOCK_SIZE; j++){
+					if(i == 0)
+						printf("cnt %d data: %d, head_idx %d data: %d",(cnt+i), *emptyBlock, head_idx+i, *storageBlock);
+					*emptyBlock = *storageBlock;
+					if(i == 0)
+						printf("%d\n", *emptyBlock);
+					emptyBlock ++;
+					storageBlock ++;
+				}
+			}
+			printf("Fuck me!!!\n");
+			for(int i = 0; i < offset; i++){
+				uchar *cleanBlock = fs->volume +
+										fs->SUPERBLOCK_SIZE+
+										(fs->FCB_ENTRIES *fs->FCB_SIZE) +
+										(end_idx-offset+i)*fs->STORAGE_BLOCK_SIZE;
+
+				for(int j = 0; j<fs->STORAGE_BLOCK_SIZE; j++){
+					*cleanBlock = '\0';
+					cleanBlock ++;
+				}
+			}
+			printf("sTORAGE TRANSFERED!\n");
+
+			cnt = end_idx-offset;
+			bitBlock = fs->volume + cnt/8;
+			bit = ((*bitBlock)>>(cnt%8))%2;
+		}
+		else{
+			if(cnt %8 == 7)
+				bitBlock ++;
+			cnt ++;
 		}
 	}
 }
 
-__device__ u32 find_first_fit(FileSystem *fs, int block_num){
+__device__ u32 find_first_fit(FileSystem *fs, int bits_num){
 	// if the file length is larger than the current length, find the first fit location.
-	printf("[find_first_fit], block number = %d\n", block_num);
+	printf("[find_first_fit], bits number = %d\n", bits_num);
+
+	// printf("FXXK try this bitch: %d\n", fs->try_bit_num);
+	uchar *tryBlock = fs->volume + (fs->try_bit_num)/8;
+	bool try_success = true;
+	for(int i = 0; i < bits_num; i++){
+		// printf("I want to fxxk u %d\n", i);
+		int bit = (*tryBlock>>(fs->try_bit_num + i)%8)%2;
+		if(bit == 1){
+			try_success = false;
+			break;
+		}
+		if((fs->try_bit_num + i)%8 == 7){
+			tryBlock ++;
+		}
+	}
+	if(try_success){
+		// printf("BETTER THAN U IDIOT = %d\n",fs->try_bit_num );
+		return fs->try_bit_num;
+	}
+
 	uchar *start_bit = fs->volume;
 	int step = 0;
-	while(step < fs->SUPERBLOCK_SIZE){
-		// printf("finding step = %d\n", step);
+	while(step < fs->SUPERBLOCK_SIZE*8){
+
+		uchar *block = start_bit + (step/8);
 		int i;
-		for(i = 0; i < block_num; i++){
-			uchar *cur_bit = start_bit + step;
-			// printf("length = %d\n", i);
-			if(*cur_bit == 1){
-				// printf("[bit %d]: Not good\n", step);
+		for(i = 0; i < bits_num; i++){
+			// printf("BLOCK VALU = %d\n", *block);
+			int bit = (*block >> (step%8))%2;
+			if(bit == 1){
+				// printf("step:%d in block:%d -> bit:%d OCCUPIED\n", step, step/8, step%8);
 				step ++;
 				break;
 			}
-			step ++;
+			else{
+				// printf("BLOCK = %d\n", *block);
+				// printf("step:%d in block:%d -> bit:%d OK\n", step, step/8, step%8);
+				if(step%8 == 7){
+					block ++;
+				}
+				step ++;
+			}
 		}
-		if(i == block_num){
+
+		if(i == bits_num){
 			// step++;
-			printf("find! first fit bit = %d\n", step-block_num);
-			return step-block_num;
+			printf("find! first fit bit = %d\n", step-bits_num);
+			return step-bits_num;
 		}
 	}
 	// no feasible storage space
 	printf("NO FEASIBLE STORAGE, DO COMPACT\n");
-	// compact_storage(fs);
+	compact_storage(fs);
+	return find_empty_bit(fs);
 }
 
 __device__ u32 fs_write(FileSystem *fs, uchar* input, u32 size, u32 fp)
@@ -225,38 +370,42 @@ __device__ u32 fs_write(FileSystem *fs, uchar* input, u32 size, u32 fp)
 	uchar *target_bit_location = target_fcb + 28;
 	// uchar *target_fcb_idx = target_fcb + 30;
 
-	uchar *writer = fs->volume + 
-					fs->SUPERBLOCK_SIZE + 
-					(fs->FCB_ENTRIES*fs->FCB_SIZE) + 
-					fs->STORAGE_BLOCK_SIZE*(*target_bit_location);
-
 	// update file size
-	*target_file_size = size;
+	*target_file_size = size/256;
+	*(target_file_size+1) = size%256;
 
 	// find suitable physical location
 	int need_bit_size = ceil((float)(size)/(float)(fs->STORAGE_BLOCK_SIZE));
-	if((*target_bit_size)<need_bit_size){
+	int bit_size = *(target_bit_size)*256 + *(target_bit_size + 1);
+	if(bit_size<need_bit_size){
 		// if we need more space to store the data
 		// set current bit map to 0, free the space in the bit-map.
-		for(uchar i = 0; i < (*target_bit_size); i++){
-			uchar *bit = fs->volume + *target_bit_location + i;
-			*bit = 0;
+		int bit_location = (*target_bit_location) * 256 + *(target_bit_location+1);
+
+		uchar *free_block = fs->volume + bit_location/8;
+		for(uchar i = 0; i < bit_size; i++){
+			*free_block -= (1<<((bit_location+i)%8));
+			if(((bit_location+i)%8) == 7){
+				free_block ++;
+			}
 		} 
+		// record the fs->try_bit_num
+		fs->try_bit_num = bit_location;
 
 		// reset the data in the STORAGE
 		uchar *start_block = fs->volume + 
 							fs->SUPERBLOCK_SIZE+
 							(fs->FCB_ENTRIES*fs->FCB_SIZE) + 
-							(*target_bit_location)*(fs->STORAGE_BLOCK_SIZE);
-		
-		for(uchar b = 0; b < *target_bit_size; b++){
+							bit_location*(fs->STORAGE_BLOCK_SIZE);
+
+		for(uchar b = 0; b < bit_size; b++){
 			uchar *block = start_block + b*(fs->STORAGE_BLOCK_SIZE);
 			for(int i = 0; i < fs->STORAGE_BLOCK_SIZE; i++){
 				*block = '\0';
 				block ++;
 			}
 		}
-		
+
 		// find the first fit bit
 		int first_fit = find_first_fit(fs, need_bit_size);
 		// printf("bit_location = %d\n",first_fit);
@@ -265,36 +414,54 @@ __device__ u32 fs_write(FileSystem *fs, uchar* input, u32 size, u32 fp)
 		*target_bit_location = first_fit/256;
 		*(target_bit_location+1) = first_fit%256;
 
-		printf("first_fit = %d\n", (*target_bit_location)*256+*(target_bit_location+1));
+		// printf("first_fit = %d\n", (*target_bit_location)*256+*(target_bit_location+1));
 
-		// set bit_length to need_bit_size
-		*target_bit_size = (uchar)need_bit_size;
+		// set bit_length to need_bit_sizef[]
+		*target_bit_size = need_bit_size/256;
+		*(target_bit_size+1) = need_bit_size%256;
 		// occupy bit map
-		uchar *bit = fs->volume + first_fit;
-		for(int i = 0; i < *target_bit_size; i++){
-			*bit = 1;
-			printf("[occupy bit %d] = %d\n", (first_fit+i), *bit);
-			bit++;
+		uchar *bit_block = fs->volume + (first_fit/8);
+		for(int i = 0; i < need_bit_size; i++){
+			// printf("original value = %d", *bit_block);
+			*bit_block += 1<<((first_fit+i)%8);
+			// printf("[occupy:%d] block:%d->bit:%d, value = %d\n",first_fit+i, (first_fit+i)/8, (first_fit+i)%8, *bit_block);
+			if((first_fit+i)%8 == 7){
+				// printf("SHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHITSHIT\n");
+				bit_block ++;
+			}
 		}	
 	}
-	else if((*target_bit_size)< need_bit_size){
+	else if(bit_size< need_bit_size){
 		// if the need_bit_size < current bit size, we set some bit to 0 to free some space in bit map
-		uchar *free_bit = fs->volume + *target_bit_location + need_bit_size;
-		for(int i = 0; i < (*target_bit_size-need_bit_size); i++){
-			*free_bit = 0;
-			free_bit ++;
-		}
+		uchar *free_block = fs->volume + (*target_bit_location)/8;
+		for(int i = *target_bit_location+need_bit_size; i<*target_bit_location+bit_size; i++){
+			*free_block -= (1<<(i%8));
+			if(i%8 == 7){
+				free_block ++;
+			}
+		} 
+		*target_bit_size = need_bit_size/256;
+		*(target_bit_size+1) = need_bit_size%256;
 	}
 
+	int bit_location = *(target_bit_location)*256+*(target_bit_location+1);
+
+	uchar *writer = fs->volume + 
+					fs->SUPERBLOCK_SIZE+
+					fs->FCB_ENTRIES*fs->FCB_SIZE+
+					fs->STORAGE_BLOCK_SIZE*  bit_location;
+
 	// write data into STORAGE
-	printf("[write data]:size = %d\n", size);
+
+	printf("[write data]:size = %d at bit location: %d\n", *(target_file_size)*256 + *(target_file_size+1), bit_location);
 	for(int i = 0; i < size; i++){
-		// printf("%d", *input);
+
 		*writer = *input;
+
 		writer ++;
 		input++;
 	}
-	// printf("\n");
+	printf("\n");
 
 	// modify time update
 	gtime ++;
@@ -347,12 +514,15 @@ __device__ void fs_gsys(FileSystem *fs, int op)
 	else if(op == LS_S){
 		printf("\n===sort by file size===\n");
 		for(int i = 0; i < fcb_num-1; i++){
-			uchar *max_len = fcb_arr[i] + 24;
+			uchar *max_f = fcb_arr[i];
+			int max_size = *(max_f+24)*256 + *(max_f+25);
+			// printf("[CHECK SIZE] = %d\n", max_size);
 			int max_idx = i;
 			for(int j = i+1; j < fcb_num; j++){
-				uchar *len_j = fcb_arr[j] + 24;
-				if(*len_j>*max_len){
-					max_len = len_j;
+				uchar *f = fcb_arr[j];
+				int f_size = *(f+24)*256+*(f+25);
+				if(f_size>max_size){
+					max_size = f_size;
 					max_idx = j;
 				}
 			}
@@ -362,13 +532,67 @@ __device__ void fs_gsys(FileSystem *fs, int op)
 			fcb_arr[max_idx] = fcb1; 
 		}
 
-		// uchar *fcb_start = fs->volume+fs->SUPERBLOCK_SIZE;
-		for(int i = 0; i<fcb_num; i++){
-      		uchar *fcb_cur = fcb_arr[i];
-			uchar *len = (uchar*)(fcb_cur + 24);
-      		printf("%s %d\n",fcb_cur, *len);		
+		// sort by create time
+		uchar *tmp = fcb_arr[0];
+		uchar *next = fcb_arr[1];
+		int cnt = 0;
+		while(cnt < fcb_num-1){
+			int tmp_size = *(tmp + 24)*256 + *(tmp+25);
+			int next_size = *(next + 24)*256 + *(next + 25);
+			if(tmp_size == next_size){
+				printf("%s size = %d, %s size = %d\n",tmp, tmp_size, next, next_size);
+				// find the end
+				int same_size = tmp_size;
+				int f_num = 0;				// the number of files in the sub-array
+				uchar *sub_arr[1024];
+				sub_arr[0] = tmp;
+				f_num ++;
+				while((*(next + 24)*256 + *(next + 25)) == same_size){
+					sub_arr[f_num] = next;
+					next += fs->FCB_SIZE;
+					f_num ++;
+				}
+
+				// sort
+				for(int i = 0; i < f_num-1; i++){
+					uchar * fi = sub_arr[i];
+					int min_time = *(fi+20)*256 + *(fi+21);
+					int min_idx = i;
+					for(int j = i+1; j < f_num; j++){
+						uchar *fj = sub_arr[j];
+						int time_j = *(fj+20)*256 + *(fj+21);
+						if(time_j < min_time){
+							min_idx = j;
+							min_time = time_j;
+						}
+					}
+					uchar *fcb1 = sub_arr[i];
+					uchar *fcb2 = sub_arr[min_idx];
+
+					fcb_arr[cnt+i] = fcb2;
+					fcb_arr[cnt+min_idx] = fcb1; 
+
+					sub_arr[cnt+i] = fcb2;
+					sub_arr[cnt+min_idx] = fcb1; 
+				}
+				printf("[SUB ARRAY]len = %d\n", f_num);
+				cnt += f_num;
+				tmp = fcb_arr[cnt];
+				next = fcb_arr[cnt+1];
+			}
+			else{
+				tmp +=fs->FCB_SIZE;
+				next +=fs->FCB_SIZE;
+				cnt ++;
+			}
 		}
 
+		for(int i = 0; i<fcb_num; i++){
+      		uchar *fcb_cur = fcb_arr[i];
+			int len = *(fcb_cur+24)*256+*(fcb_cur+25);
+			int creat_time = *(fcb_cur+20)*256+*(fcb_cur+21);
+      		printf("%s len = %d, create time = %d\n",fcb_cur, len, creat_time);		
+		}
 	}
 }
 
@@ -384,7 +608,6 @@ __device__ void fs_gsys(FileSystem *fs, int op, char *s)
 	for(int i = 0; i<fs->FCB_ENTRIES; i++){
 		uchar *fcb = start_fcb + i*fs->FCB_SIZE;
 		if(check_name(fcb, s)){
-			printf("[find file]: %s\n", fcb);
 			file_exist = true;
 			fcb_idx = i;
 		}
@@ -396,23 +619,33 @@ __device__ void fs_gsys(FileSystem *fs, int op, char *s)
 	}
 
 	uchar *target_fcb = start_fcb + fcb_idx*fs->FCB_SIZE;
-	// uchar *target_modify_time = target_fcb + 22;
-	// uchar *target_file_size = target_fcb + 24;
 	uchar *target_bit_size = target_fcb + 26;
 	uchar *target_bit_location = target_fcb + 28;
-	// uchar *target_fcb_idx = target_fcb + 30;
 
+	int bit_location = (*target_bit_location)*256 + *(target_bit_location+1);
 	// clean the bit map
-	uchar *rm_bit = fs->volume + *target_bit_location;
-	for(int i = 0; i < *target_bit_size; i++){
-		*rm_bit = 0;
-		rm_bit ++;
+	uchar *rm_block = fs->volume + bit_location/8;
+	printf("original value = %d ", *rm_block);
+
+	int bit_size = *(target_bit_size)*256 + *(target_bit_size+1);
+
+	for(int i = 0; i < bit_size; i++){
+		*rm_block -= 1<<((bit_location+i)%8);
+		printf("[RM bit] block:%d->bit:%d value = %d\n", (bit_location+i)/8, (bit_location+i)%8, *rm_block);
+		
+		if(((*target_bit_location)%8)+i == 7){
+			rm_block ++;
+		}
 	}
+
+	// record the fs->try_bit_num
+	fs->try_bit_num = bit_location;
 
 	// clean the STORAGE
 	uchar *rm_storage = fs->volume + fs->SUPERBLOCK_SIZE + 
 						(fs->FCB_ENTRIES*fs->FCB_SIZE);
-	for(int b = 0; b < *target_bit_size; b++){
+
+	for(int b = 0; b < bit_size; b++){
 		for(int i = 0; i < fs->STORAGE_BLOCK_SIZE; i++){
 			*rm_storage = 0;
 			rm_storage ++;
@@ -423,7 +656,6 @@ __device__ void fs_gsys(FileSystem *fs, int op, char *s)
 	for(int i = 0; i < fs->FCB_SIZE; i++){
 		if(*target_fcb == '\0')
 			break;
-		// printf("[rm fcb] = %s\n", target_fcb);
 		*target_fcb = 0; 
 		target_fcb ++;
 	}
