@@ -25,6 +25,7 @@ struct FileSystem {
 	int MAX_FILE_NUM;
 	int MAX_FILE_SIZE;
 	int FILE_BASE_ADDRESS;
+	int try_bit_num;
 };
 
 
