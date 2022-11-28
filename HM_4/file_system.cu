@@ -206,7 +206,7 @@ __device__ void compact_storage(FileSystem *fs){
 				head_idx++;
 
 				if(head_idx >=fs->SUPERBLOCK_SIZE*8){
-					printf("This stupid shit go to hell!!!\n");
+					// printf("This stupid shit go to hell!!!\n");
 					return;
 				}
 
@@ -219,7 +219,7 @@ __device__ void compact_storage(FileSystem *fs){
 			int head_fcb_num = find_fcb_from_bit(fs, head_idx);
 			uchar *head_fcb = fs->volume + fs->SUPERBLOCK_SIZE + head_fcb_num*fs->FCB_SIZE;
 
-			printf("head fcb = %s\n", head_fcb);
+			// printf("head fcb = %s\n", head_fcb);
 
 			uchar *target_bit_size = head_fcb + 26;
 			uchar *target_bit_location = head_fcb + 28;
@@ -266,16 +266,12 @@ __device__ void compact_storage(FileSystem *fs){
 										(cnt + i)*fs->STORAGE_BLOCK_SIZE;
 				
 				for(int j = 0; j < fs->STORAGE_BLOCK_SIZE; j++){
-					if(i == 0)
-						printf("cnt %d data: %d, head_idx %d data: %d",(cnt+i), *emptyBlock, head_idx+i, *storageBlock);
 					*emptyBlock = *storageBlock;
-					if(i == 0)
-						printf("%d\n", *emptyBlock);
 					emptyBlock ++;
 					storageBlock ++;
 				}
 			}
-			printf("Fuck me!!!\n");
+			// printf("Fuck me!!!\n");
 			for(int i = 0; i < offset; i++){
 				uchar *cleanBlock = fs->volume +
 										fs->SUPERBLOCK_SIZE+
@@ -287,7 +283,7 @@ __device__ void compact_storage(FileSystem *fs){
 					cleanBlock ++;
 				}
 			}
-			printf("sTORAGE TRANSFERED!\n");
+			// printf("sTORAGE TRANSFERED!\n");
 
 			cnt = end_idx-offset;
 			bitBlock = fs->volume + cnt/8;
@@ -303,7 +299,7 @@ __device__ void compact_storage(FileSystem *fs){
 
 __device__ u32 find_first_fit(FileSystem *fs, int bits_num){
 	// if the file length is larger than the current length, find the first fit location.
-	printf("[find_first_fit], bits number = %d\n", bits_num);
+	// printf("[find_first_fit], bits number = %d\n", bits_num);
 
 	// printf("FXXK try this bitch: %d\n", fs->try_bit_num);
 	uchar *tryBlock = fs->volume + (fs->try_bit_num)/8;
@@ -350,7 +346,7 @@ __device__ u32 find_first_fit(FileSystem *fs, int bits_num){
 
 		if(i == bits_num){
 			// step++;
-			printf("find! first fit bit = %d\n", step-bits_num);
+			// printf("find! first fit bit = %d\n", step-bits_num);
 			return step-bits_num;
 		}
 	}
@@ -453,7 +449,7 @@ __device__ u32 fs_write(FileSystem *fs, uchar* input, u32 size, u32 fp)
 
 	// write data into STORAGE
 
-	printf("[write data]:size = %d at bit location: %d\n", *(target_file_size)*256 + *(target_file_size+1), bit_location);
+	// printf("[write data]:size = %d at bit location: %d\n", *(target_file_size)*256 + *(target_file_size+1), bit_location);
 	for(int i = 0; i < size; i++){
 
 		*writer = *input;
@@ -461,7 +457,7 @@ __device__ u32 fs_write(FileSystem *fs, uchar* input, u32 size, u32 fp)
 		writer ++;
 		input++;
 	}
-	printf("\n");
+	// printf("\n");
 
 	// modify time update
 	gtime ++;
@@ -604,7 +600,8 @@ __device__ void fs_gsys(FileSystem *fs, int op)
       		uchar *fcb_cur = fcb_arr[i];
 			int len = *(fcb_cur+24)*256+*(fcb_cur+25);
 			int creat_time = *(fcb_cur+20)*256+*(fcb_cur+21);
-      		printf("%s file size = %d, create time = %d\n",fcb_cur, len, creat_time);		
+      		// printf("%s file size = %d, create time = %d\n",fcb_cur, len, creat_time);		
+      		printf("%s %d\n",fcb_cur, len);		
 		}
 	}
 }
@@ -612,7 +609,7 @@ __device__ void fs_gsys(FileSystem *fs, int op)
 __device__ void fs_gsys(FileSystem *fs, int op, char *s)
 {
 	/* Implement rm operation here */
-	printf("\n[Remove]:%s\n", s);
+	// printf("\n[Remove]:%s\n", s);
 	int fcb_idx;
 	uchar *start_fcb = fs->volume+fs->SUPERBLOCK_SIZE;
 	bool file_exist = false;
@@ -638,13 +635,13 @@ __device__ void fs_gsys(FileSystem *fs, int op, char *s)
 	int bit_location = (*target_bit_location)*256 + *(target_bit_location+1);
 	// clean the bit map
 	uchar *rm_block = fs->volume + bit_location/8;
-	printf("original value = %d ", *rm_block);
+	// printf("original value = %d ", *rm_block);
 
 	int bit_size = *(target_bit_size)*256 + *(target_bit_size+1);
 
 	for(int i = 0; i < bit_size; i++){
 		*rm_block -= 1<<((bit_location+i)%8);
-		printf("[RM bit] block:%d->bit:%d value = %d\n", (bit_location+i)/8, (bit_location+i)%8, *rm_block);
+		// printf("[RM bit] block:%d->bit:%d value = %d\n", (bit_location+i)/8, (bit_location+i)%8, *rm_block);
 		
 		if(((*target_bit_location)%8)+i == 7){
 			rm_block ++;
