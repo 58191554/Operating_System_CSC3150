@@ -3,8 +3,8 @@
 ### My HM Grade
   HM1: 100/110 
   HM2: 110/110 
-  HM3: 
-  HM4: 
+  HM3: 105/110
+  HM4: 110/110
 ### Final Range 
 1. OS concept 
 2. What is process management and storage management 
